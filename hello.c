@@ -5,64 +5,140 @@
 #include <linux/miscdevice.h>
 #include <linux/uaccess.h>
 #include <linux/slab.h>
+#include <linux/list.h>
+#include <linux/mutex.h>
+#include <linux/workqueue.h>
+#include <linux/string.h>
+#include <linux/jiffies.h>
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Laurent Brusa");
-MODULE_DESCRIPTION("A Hello World Kernel Module");
+MODULE_DESCRIPTION("Aufgabe 3: Benutzung der Kernel API");
 
-#define MAX_SIZE 256
-static char *msg_buffer;
-static short message_size = 0;
+// Die Liste fuer Aufgabe 3
+struct word_node {
+    char *word;
+    struct list_head list;
+};
 
-// Aufgabe 2.2 (cat /dev/fritz_module)
+// Aufgabe 3: Initialisierung
+static LIST_HEAD(word_list);
+static DEFINE_MUTEX(word_mutex);
+static struct delayed_work print_work;
+
+// Aufgabe 3.1. Die Text-Daten aus den internen Speicher
+// sollen regelmässig, 1 Wort pro Sekunde, in das
+// Kernel Log geschrieben werden
+static void print_word_work(struct work_struct *work) {
+    struct word_node *node = NULL;
+    
+    mutex_lock(&word_mutex);
+    if (!list_empty(&word_list)) {
+        node = list_first_entry(&word_list, struct word_node, list);
+        list_del(&node->list);
+    }
+    mutex_unlock(&word_mutex);
+    
+    if (node) {
+        printk(KERN_INFO "fritz_module word: %s\n", node->word);
+        kfree(node->word);
+        kfree(node);
+             
+	schedule_delayed_work(&print_work, HZ);
+    }
+}
+
+// Aufgabe 2.2: Text-Daten aus dem internen Speicher an den Userspace zurückgeben
 static ssize_t dev_read(struct file *filep, char __user *buffer, size_t len, loff_t *offset) {
-	if (*offset >= message_size) return 0;
-	if (len > message_size - *offset) len = message_size - *offset;
-	
-	if (copy_to_user(buffer, msg_buffer + *offset, len)) return -EFAULT;
+    char *temp_buf;
+    struct word_node *node;
+    size_t pos = 0;
 
-	*offset += len;
-	return len;
+    if (*offset > 0) return 0;
+
+    temp_buf = kzalloc(1024, GFP_KERNEL);
+    if (!temp_buf) return -ENOMEM;
+
+    mutex_lock(&word_mutex);
+    list_for_each_entry(node, &word_list, list) {
+        pos += snprintf(temp_buf + pos, 1024 - pos, "%s ", node->word);
+        if (pos >= 1023) break;
+    }
+    mutex_unlock(&word_mutex);
+
+    if (pos > 0) temp_buf[pos - 1] = '\n';
+    else pos = snprintf(temp_buf, 1024, "List is empty\n");
+    if (len < pos) pos = len;
+
+    if (copy_to_user(buffer, temp_buf, pos)) {
+        kfree(temp_buf);
+        return -EFAULT;
+    }
+
+    kfree(temp_buf);
+    *offset += pos;
+    return pos;
 }
 
-// aufgabe 2.1 (echo "text" > /dev/fritz_module)
+// Aufgabe 2.1: 
 static ssize_t dev_write(struct file *filep, const char __user *buffer, size_t len, loff_t *offset) {
-	if (len >= MAX_SIZE) len = MAX_SIZE - 1;
+    char *input_buf, *str_ptr, *token;
 
-	if (copy_from_user(msg_buffer, buffer, len)) return -EFAULT;
+    if (len > 1024) return -EINVAL;
 
-	msg_buffer[len] = '\0';
-	message_size = len;
-	return len;
+    input_buf = kzalloc(len + 1, GFP_KERNEL);
+    if (!input_buf) return -ENOMEM;
+    if (copy_from_user(input_buf, buffer, len)) {
+        kfree(input_buf);
+        return -EFAULT;
+    }
+
+    str_ptr = input_buf;
+    while ((token = strsep(&str_ptr, " \n\t")) != NULL) {
+        if (*token == '\0') continue; 
+        
+        struct word_node *new_node = kmalloc(sizeof(struct word_node), GFP_KERNEL);
+        if (new_node) {
+            new_node->word = kstrdup(token, GFP_KERNEL);
+            
+            mutex_lock(&word_mutex);
+            list_add_tail(&new_node->list, &word_list);
+            mutex_unlock(&word_mutex);
+        }
+    }
+    kfree(input_buf);
+
+    schedule_delayed_work(&print_work, HZ);
+
+    return len;
 }
 
-static struct file_operations fops = {
-	.read = dev_read,
-	.write = dev_write,
-};
-
-static struct miscdevice my_misc_device = {
-	.minor = MISC_DYNAMIC_MINOR,
-	.name = "fritz_module",
-	.fops = &fops,
-};
+static struct file_operations fops = { .read = dev_read, .write = dev_write };
+static struct miscdevice my_misc_device = { .minor = MISC_DYNAMIC_MINOR, .name = "fritz_module", .fops = &fops };
 
 static int __init my_init(void) {
-	// Aufgabe 2.1 Text-Daten vom Userspace in einem dynamischen internen Speicher ablegen
-	msg_buffer = kmalloc(MAX_SIZE, GFP_KERNEL);
-	if (!msg_buffer) return -ENOMEM;
-	misc_register (&my_misc_device);
-
-	printk(KERN_INFO "Hello Kernel: Module loaded successfully (Device at /dev/fritz_module).\n");
-	return 0;
+    INIT_DELAYED_WORK(&print_work, print_word_work);
+    misc_register(&my_misc_device);
+    printk(KERN_INFO "Hello Kernel: Module loaded successfully.\n");
+    return 0;
 }
 
 static void __exit my_exit(void) {
-	misc_deregister(&my_misc_device);
-	kfree(msg_buffer);
-	printk(KERN_INFO "Goodbye Kernel: Module removed!\n");
+    struct word_node *node, *tmp;
+    
+    misc_deregister(&my_misc_device);
+    cancel_delayed_work_sync(&print_work);
+    
+    mutex_lock(&word_mutex);
+    list_for_each_entry_safe(node, tmp, &word_list, list) {
+        list_del(&node->list);
+        kfree(node->word);
+        kfree(node);
+    }
+    mutex_unlock(&word_mutex);
+    
+    printk(KERN_INFO "Goodbye Kernel: Module removed.\n");
 }
 
 module_init(my_init);
 module_exit(my_exit);
-
