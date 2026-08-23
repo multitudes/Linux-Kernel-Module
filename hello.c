@@ -132,12 +132,19 @@ static ssize_t dev_write(struct file *filep, const char __user *buffer,
 // this intercepts the write and read system calls to my module and tell
 // the system to use the dev_read and dev_write instead.
 // example when I do echo "hello" > /dev/fritz_module the dev_write is called
-static struct file_operations fops = {.read = dev_read, .write = dev_write};
+//.owner = THIS_MODULE is a safety feature where THIS_MODULE is a macro
+// the kernel tracks who is using the file and stops removing t when in use
+static struct file_operations fops = {
+    .owner = THIS_MODULE, .read = dev_read, .write = dev_write};
 
+// miscdevice is a device class created to save devs from writing manually the
+// driver it will have major number (10) by default. The name is what we will
+// use like /dev/fritz_module and fops are the file operations defined above
 static struct miscdevice my_misc_device = {
     .minor = MISC_DYNAMIC_MINOR, .name = "fritz_module", .fops = &fops};
 
-// a macro which will call my my_init function at the start
+// __init: a macro which set up the module and will call my my_init function at
+// the start
 static int __init my_init(void) {
   INIT_DELAYED_WORK(&print_work, print_word_work);
   misc_register(&my_misc_device);
