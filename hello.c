@@ -91,16 +91,18 @@ static ssize_t dev_read(struct file *filep, char __user *buffer, size_t len,
 }
 
 // Aufgabe 2.1:
+// the kernel will pass the args to us
+// __user is a tag to indicate the memory address belongs to user space
 static ssize_t dev_write(struct file *filep, const char __user *buffer,
                          size_t len, loff_t *offset) {
   char *input_buf, *str_ptr, *token;
 
   if (len > 1024)
-    return -EINVAL;
+    return -EINVAL; // error invalid argument
 
   input_buf = kzalloc(len + 1, GFP_KERNEL);
   if (!input_buf)
-    return -ENOMEM;
+    return -ENOMEM; // error no memory
   if (copy_from_user(input_buf, buffer, len)) {
     kfree(input_buf);
     return -EFAULT;
@@ -127,7 +129,11 @@ static ssize_t dev_write(struct file *filep, const char __user *buffer,
   return len;
 }
 
+// this intercepts the write and read system calls to my module and tell
+// the system to use the dev_read and dev_write instead.
+// example when I do echo "hello" > /dev/fritz_module the dev_write is called
 static struct file_operations fops = {.read = dev_read, .write = dev_write};
+
 static struct miscdevice my_misc_device = {
     .minor = MISC_DYNAMIC_MINOR, .name = "fritz_module", .fops = &fops};
 
