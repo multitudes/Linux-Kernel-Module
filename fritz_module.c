@@ -13,9 +13,8 @@
 
 MODULE_LICENSE("GPL");          // needed
 MODULE_AUTHOR("Laurent Brusa"); // optional, but it is just good practice
-MODULE_DESCRIPTION(
-    "Aufgabe 3: Benutzung der Kernel API"); // optional, but it is just good
-                                            // practice
+MODULE_DESCRIPTION("Aufgaben für Bewerber"); // optional, but it is
+                                             // just good practice
 
 // Die Liste fuer Aufgabe 3
 struct word_node {
@@ -23,72 +22,9 @@ struct word_node {
   struct list_head list;
 };
 
-// Aufgabe 3: Initialisierung
 static LIST_HEAD(word_list);
 static DEFINE_MUTEX(word_mutex);
 static struct delayed_work print_work;
-
-// Aufgabe 3.1. Die Text-Daten aus den internen Speicher
-// sollen regelmässig, 1 Wort pro Sekunde, in das
-// Kernel Log geschrieben werden
-static void print_word_work(struct work_struct *work) {
-  struct word_node *node = NULL;
-
-  mutex_lock(&word_mutex);
-  if (!list_empty(&word_list)) {
-    node = list_first_entry(&word_list, struct word_node, list);
-    list_del(&node->list);
-  }
-  mutex_unlock(&word_mutex);
-
-  if (node) {
-    printk(KERN_INFO "fritz_module word: %s\n", node->word);
-    kfree(node->word);
-    kfree(node);
-
-    schedule_delayed_work(&print_work, HZ);
-  }
-}
-
-// Aufgabe 2.2: Text-Daten aus dem internen Speicher an den Userspace
-// zurückgeben
-static ssize_t dev_read(struct file *filep, char __user *buffer, size_t len,
-                        loff_t *offset) {
-  char *temp_buf;
-  struct word_node *node;
-  size_t pos = 0;
-
-  if (*offset > 0)
-    return 0;
-
-  temp_buf = kzalloc(1024, GFP_KERNEL);
-  if (!temp_buf)
-    return -ENOMEM;
-
-  mutex_lock(&word_mutex);
-  list_for_each_entry(node, &word_list, list) {
-    pos += snprintf(temp_buf + pos, 1024 - pos, "%s ", node->word);
-    if (pos >= 1023)
-      break;
-  }
-  mutex_unlock(&word_mutex);
-
-  if (pos > 0)
-    temp_buf[pos - 1] = '\n';
-  else
-    pos = snprintf(temp_buf, 1024, "List is empty\n");
-  if (len < pos)
-    pos = len;
-
-  if (copy_to_user(buffer, temp_buf, pos)) {
-    kfree(temp_buf);
-    return -EFAULT;
-  }
-
-  kfree(temp_buf);
-  *offset += pos;
-  return pos;
-}
 
 // Aufgabe 2.1:
 // the kernel will pass the args to us
@@ -127,6 +63,85 @@ static ssize_t dev_write(struct file *filep, const char __user *buffer,
   schedule_delayed_work(&print_work, HZ);
 
   return len;
+}
+
+// Aufgabe 2.2: Text-Daten aus dem internen Speicher an den Userspace
+// zurückgeben
+// this is when I run echo "One two three four..." > /dev/fritz_module.
+// then run cat / dev / fritz_module, I will see all 10 words on my terminal
+// this is not yet the timer function
+static ssize_t dev_read(struct file *filep, char __user *buffer, size_t len,
+                        loff_t *offset) {
+  char *temp_buf;
+  struct word_node *node;
+  size_t pos = 0;
+
+  // offset is how many bytes we already read - it is a hack
+  // we should really calculate the total size of the message
+  // but for our example is good enough. cat might have a buffer
+  // of at least a few KB
+  // we only read once!
+  if (*offset > 0)
+    return 0;
+
+  // kzalloc is exactly the same as kmalloc, except it automatically fills the
+  // newly allocated memory block with zeros
+  temp_buf = kzalloc(1024, GFP_KERNEL);
+  if (!temp_buf)
+    return -ENOMEM;
+
+  mutex_lock(&word_mutex);
+  list_for_each_entry(node, &word_list, list) {
+    // The n in snprintf stands for "number of bytes." It is the secure version
+    // of sprintf - 1 K is already a good size in kernel space. we put the whole
+    // content in the temp_buf
+    pos += snprintf(temp_buf + pos, 1024 - pos, "%s ", node->word);
+    if (pos >= 1023)
+      break;
+  }
+  mutex_unlock(&word_mutex);
+
+  // if we have a string add a newline
+  if (pos > 0)
+    temp_buf[pos - 1] = '\n';
+  else
+    pos = snprintf(temp_buf, 1024, "List is empty\n");
+  // truncate if the length of our string is bigger than what we can return
+  if (len < pos)
+    pos = len;
+
+  // copy to userspace
+  if (copy_to_user(buffer, temp_buf, pos)) {
+    // free and return if fails
+    kfree(temp_buf);
+    return -EFAULT;
+  }
+
+  kfree(temp_buf);
+  *offset += pos;
+  return pos;
+}
+
+// Aufgabe 3.1. Die Text-Daten aus den internen Speicher
+// sollen regelmässig, 1 Wort pro Sekunde, in das
+// Kernel Log geschrieben werden
+static void print_word_work(struct work_struct *work) {
+  struct word_node *node = NULL;
+
+  mutex_lock(&word_mutex);
+  if (!list_empty(&word_list)) {
+    node = list_first_entry(&word_list, struct word_node, list);
+    list_del(&node->list);
+  }
+  mutex_unlock(&word_mutex);
+
+  if (node) {
+    printk(KERN_INFO "fritz_module word: %s\n", node->word);
+    kfree(node->word);
+    kfree(node);
+
+    schedule_delayed_work(&print_work, HZ);
+  }
 }
 
 // this intercepts the write and read system calls to my module and tell

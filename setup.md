@@ -72,8 +72,8 @@ Open UTM and click the **`+`** button:
 * Check **Boot from kernel image** off, click **Browse...** next to *Boot ISO Image*, and choose the downloaded Ubuntu ISO.
 * Leave defaults: **2 to 4 GB RAM**, **2 CPU cores**, and **15–20 GB disk size** (dynamic, won't take space until used).
 
+**Install Ubuntu Server:**
 
-3. **Install Ubuntu Server:**
 Start the VM and follow the text installer:
 
 * Select your language and standard defaults.
