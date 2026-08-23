@@ -1,4 +1,4 @@
-# Linux Kernel Module Project
+![linux-kernel-module-header.jpg](linux-kernel-module-header.jpg)
 
 Since I'm working on an Apple Silicon Mac, I had to figure out a good way to run a native ARM Linux environment. I ended up using UTM to spin up an Ubuntu Server 26.04 virtual machine. I went with the minimal installation (no GUI) to keep things fast and lightweight.
 
