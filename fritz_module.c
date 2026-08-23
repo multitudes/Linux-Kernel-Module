@@ -13,7 +13,7 @@
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Laurent Brusa");
-MODULE_DESCRIPTION("Aufgabe 3: Benutzung der Kernel API");
+MODULE_DESCRIPTION("Aufgabe fuer Bewerbende");
 
 // Die Liste fuer Aufgabe 3
 struct word_node {
