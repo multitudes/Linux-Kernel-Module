@@ -28,3 +28,4 @@ This part required a pretty big refactor. Instead of just holding a single strin
 
 ## Links
 [Ubuntu server download.](https://ubuntu.com/download/server/arm)  
+[kernel.org](https://kernel.org)  
