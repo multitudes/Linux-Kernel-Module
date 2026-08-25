@@ -133,11 +133,23 @@ static struct file_operations fops = {
 static struct miscdevice my_misc_device = {
     .minor = MISC_DYNAMIC_MINOR, .name = "fritz_module", .fops = &fops};
 
-static int __init my_init(void) {
-  INIT_DELAYED_WORK(&print_work, print_word_work);
-  misc_register(&my_misc_device);
-  printk(KERN_ALERT "Hello, world\n");
-  return 0;
+// error handling with goto!
+static int __init fritz_init(void) {
+    int err;
+
+    mutex_init(&word_mutex);
+    INIT_LIST_HEAD(&word_list);
+    INIT_DELAYED_WORK(&print_work, print_word_work);
+
+    // misc_register returns 0 on success, or a negative error code
+    err = misc_register(&my_misc_device);
+    if (err) {
+        printk(KERN_ERR "fritz_module: failed to register device\n");
+        return err; // Propagate the error directly
+    }
+
+    printk(KERN_INFO "fritz_module: loaded successfully\n");
+    return 0;
 }
 
 static void __exit my_exit(void) {
