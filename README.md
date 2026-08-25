@@ -25,6 +25,17 @@ Because it has zero access to external libraries, all header files must be pulle
 * **Printing:** Instead of `<stdio.h>` for `printf()`, we use `<linux/kernel.h>` for `printk()`.
 * **Strings:** Instead of the standard `<string.h>`, we use the kernel's internal `<linux/string.h>` to access secure string functions like `strsep()` and `snprintf()`.
 
+**The Kernel Build System (kbuild)**
+If you are familiar with traditional C Makefiles, the Makefile for this module might look strangely empty. The core of it boils down to just a single line: `obj-m := fritz_module.o`. 
+
+This works because we aren't writing a standalone Makefile from scratch. Instead, we are hooking directly into the Linux kernel's massive, pre-existing build system (kbuild). By assigning our object file to `obj-m`, we are simply handing our code over and telling kbuild: *"Take this object file and turn it into a loadable kernel module (.ko)."* kbuild automatically handles all the complex linking, architecture-specific compiler flags, and header paths completely behind the scenes. 
+
+If you ever need to build a single module out of multiple C source files, you just specify the final module name and list the ingredients like this:
+```makefile
+obj-m := final_module.o
+final_module-objs := main.o utils.o memory.o
+```
+
 ## Aufgabe 1: Module Basics
 
 The first step was just getting a basic module to compile, load, and unload safely. I wrote a simple C file using the `module_init` and `module_exit` macros. It uses `printk` to drop a status message into the kernel log (`dmesg`) whenever the module is inserted or removed.
