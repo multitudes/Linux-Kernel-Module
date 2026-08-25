@@ -67,6 +67,10 @@ To save developers from writing setup scripts for simple devices, the kernel pro
 * By setting `.minor = MISC_DYNAMIC_MINOR` in our setup struct, the kernel safely auto-assigns us an available Minor number without risking conflicts.
 * The biggest advantage is that `misc_register()` automatically signals the OS device manager. The exact millisecond the module loads, the `/dev/fritz_module` file is automatically generated for us, and it seamlessly deletes itself when the module is removed. No manual scripts required.
 
+### Concurrency: Mutexes vs. Semaphores
+
+If you are reading older kernel documentation (like the LDD3 book), you will frequently see semaphores and functions like `down_interruptible()` used to manage driver concurrency. While semaphores used to be the standard tool for this job, they are now considered outdated for basic locking scenarios. Modern Linux kernel development strongly prefers the **mutex** (Mutual Exclusion) API. Mutexes are specifically designed for "one-key" binary locking; they are leaner, execute faster, and include strict built-in debugging checks that semaphores lack. In this module, we use a mutex to protect our shared linked list from race conditions. Furthermore, by using `mutex_lock_interruptible()` in our read and write operations, we ensure that if a user process is waiting for the lock, it can still be safely canceled (e.g., via `Ctrl+C`), returning `-ERESTARTSYS` to gracefully back out of the system call.
+
 ## Aufgabe 1: Module Basics
 
 The first step was just getting a basic module to compile, load, and unload safely. I wrote a simple C file using the `module_init` and `module_exit` macros. It uses `printk` to drop a status message into the kernel log (`dmesg`) whenever the module is inserted or removed.
