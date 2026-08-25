@@ -133,7 +133,7 @@ static struct file_operations fops = {
 static struct miscdevice my_misc_device = {
     .minor = MISC_DYNAMIC_MINOR, .name = "fritz_module", .fops = &fops};
 
-// error handling with goto!
+// // Aufgabe 1:
 static int __init fritz_init(void) {
     int err;
 
