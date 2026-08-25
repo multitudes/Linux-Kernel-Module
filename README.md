@@ -49,6 +49,24 @@ Here is exactly what this command is doing under the hood:
 **The /proc Filesystem (procfs)**
 The `/proc` directory is a virtual filesystem created entirely in RAM by the Linux kernel; none of the files inside it actually exist on your hard drive. Instead, reading a file (like `/proc/cpuinfo` or `/proc/modules`) triggers a kernel function that dynamically generates text detailing the system's current internal state. While device files in `/dev` (like `/dev/fritz_module`) are used for active input/output operations with hardware or drivers, `/proc` is strictly used for exposing system information and tuning kernel configurations on the fly. In fact, standard user-space commands rely heavily on this illusion—for example, the `lsmod` command simply reads the virtual `/proc/modules` file to list what is currently loaded in memory.
 
+## Device Registration: Raw Char Drivers vs. Misc Framework
+
+When building a Linux kernel module that users can interact with, the kernel needs a way to route user-space operations (like `cat` or `echo`) to your specific driver code. It does this using **Major** (driver category) and **Minor** (specific device) numbers. 
+
+If you reference older documentation like *Linux Device Drivers (LDD3)*, you will see device registration handled very differently than in this project. 
+
+### The "Hard Way" (Raw Character Drivers)
+Writing a raw character driver from scratch requires significant manual setup and user-space scripting:
+* You must ask the kernel for a new, dynamically allocated Major number using `alloc_chrdev_region()`.
+* The kernel does *not* automatically create the endpoint in your `/dev` directory when the module loads. 
+* To actually use the driver, you have to write a custom Bash script that loads the `.ko` file, searches through the virtual `/proc/devices` file to find out which Major number the kernel randomly handed you, and then uses the `mknod` command to physically create the `/dev/your_device` file so users can interact with it.
+
+### The "Misc Way" (The `miscdevice` Shortcut)
+To save developers from writing setup scripts for simple devices, the kernel provides the `miscdevice` framework, which this project uses. 
+* Instead of requesting a unique Major number, our driver piggybacks on the kernel's built-in "misc" subsystem, which statically owns Major number 10.
+* By setting `.minor = MISC_DYNAMIC_MINOR` in our setup struct, the kernel safely auto-assigns us an available Minor number without risking conflicts.
+* The biggest advantage is that `misc_register()` automatically signals the OS device manager. The exact millisecond the module loads, the `/dev/fritz_module` file is automatically generated for us, and it seamlessly deletes itself when the module is removed. No manual scripts required.
+
 ## Aufgabe 1: Module Basics
 
 The first step was just getting a basic module to compile, load, and unload safely. I wrote a simple C file using the `module_init` and `module_exit` macros. It uses `printk` to drop a status message into the kernel log (`dmesg`) whenever the module is inserted or removed.
