@@ -157,5 +157,7 @@ static void __exit my_exit(void) {
   printk(KERN_ALERT "Goodbye, cruel world\n\n");
 }
 
+// The use of module_initis mandatory
 module_init(my_init);
+
 module_exit(my_exit);
