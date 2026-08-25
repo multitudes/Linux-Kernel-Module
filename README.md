@@ -6,6 +6,14 @@ Since I'm working on an Apple Silicon Mac, I had to figure out a good way to run
 
 During the initial OS setup, I created the default user and pulled my public SSH keys straight from GitHub. This was a great shortcut because it let me SSH into the VM from my Mac terminal immediately without messing with passwords. Once inside the VM, we generated a brand new SSH key pair and added the public key to my GitHub settings so we could push commits back to this repository.
 
+## Development Notes
+
+**Kernel Headers vs. Full Compilation**
+If you're referencing older material like the classic *Linux Device Drivers (LDD3)* book, you might see instructions telling you to download a mainline kernel from kernel.org and compile it from scratch. You can completely skip that step. Modern distributions like Ubuntu already provide the necessary development files via the `linux-headers` package. This module is designed to build directly against your existing host kernel, saving you from having to recompile the entire operating system just to test a simple driver.
+
+**Why MODULE_LICENSE("GPL") matters**
+You'll notice the `MODULE_LICENSE("GPL")` macro at the bottom of the source code. This isn't just boilerplate or a legal formality—it has actual technical consequences. If you leave this out or use a proprietary license, the kernel will throw a "tainted kernel" warning into `dmesg` as soon as you load the module. More importantly, the kernel physically blocks non-GPL modules from calling certain restricted internal APIs (functions marked with `EXPORT_SYMBOL_GPL`). Tagging the module as GPL keeps the kernel happy and ensures we have full access to everything we need.
+
 ## Aufgabe 1: Module Basics
 
 The first step was just getting a basic module to compile, load, and unload safely. I wrote a simple C file using the `module_init` and `module_exit` macros. It uses `printk` to drop a status message into the kernel log (`dmesg`) whenever the module is inserted or removed.
