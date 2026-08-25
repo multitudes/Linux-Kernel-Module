@@ -133,7 +133,7 @@ static struct miscdevice my_misc_device = {
 static int __init my_init(void) {
   INIT_DELAYED_WORK(&print_work, print_word_work);
   misc_register(&my_misc_device);
-  printk(KERN_INFO "Hello Kernel: Module loaded successfully.\n");
+  printk(KERN_ALERT "Hello, world\n");
   return 0;
 }
 
@@ -151,7 +151,7 @@ static void __exit my_exit(void) {
   }
   mutex_unlock(&word_mutex);
 
-  printk(KERN_INFO "Goodbye Kernel: Module removed.\n");
+  printk(KERN_ALERT "Goodbye, cruel world\n\n");
 }
 
 module_init(my_init);
