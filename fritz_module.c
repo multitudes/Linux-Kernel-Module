@@ -159,5 +159,6 @@ static void __exit my_exit(void) {
 
 // The use of module_initis mandatory
 module_init(my_init);
-
+//  If your module does not define a cleanup function, the kernel does not allow it to be
+// unloaded.
 module_exit(my_exit);
