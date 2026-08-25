@@ -36,6 +36,17 @@ obj-m := final_module.o
 final_module-objs := main.o utils.o memory.o
 ```
 
+**Executing the Build Command**
+To actually trigger the build, the command is a bit more complex than a standard user-space build. It typically looks like this (often wrapped inside a `all:` rule in your Makefile for convenience):
+
+`make -C /lib/modules/$(uname -r)/build M=$(PWD) modules`
+
+Here is exactly what this command is doing under the hood:
+* **`-C <path>`**: This tells `make` to temporarily change its directory to the Linux kernel headers (or kernel source tree). This is necessary because it needs to read the kernel's massive top-level makefile to know *how* to build a module.
+* **`M=$(PWD)`**: Once `make` has read the kernel's rules, this argument tells it to jump right back to your current working directory (where your module's source code and local Makefile live).
+* **`modules`**: This is the specific build target. It tells the kernel build system to look at your `obj-m` assignment and compile your code into a loadable `.ko` file.
+
+
 ## Aufgabe 1: Module Basics
 
 The first step was just getting a basic module to compile, load, and unload safely. I wrote a simple C file using the `module_init` and `module_exit` macros. It uses `printk` to drop a status message into the kernel log (`dmesg`) whenever the module is inserted or removed.
