@@ -1,10 +1,13 @@
+// just about all module code has the following:
+#include <linux/module.h>
+#include <linux/init.h> 
+
+// and the rest
 #include <linux/fs.h>
-#include <linux/init.h>
 #include <linux/jiffies.h>
 #include <linux/kernel.h>
 #include <linux/list.h>
 #include <linux/miscdevice.h>
-#include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/slab.h>
 #include <linux/string.h>
