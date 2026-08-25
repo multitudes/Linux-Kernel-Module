@@ -14,6 +14,17 @@ If you're referencing older material like the classic *Linux Device Drivers (LDD
 **Why MODULE_LICENSE("GPL") matters**
 You'll notice the `MODULE_LICENSE("GPL")` macro at the bottom of the source code. This isn't just boilerplate or a legal formality—it has actual technical consequences. If you leave this out or use a proprietary license, the kernel will throw a "tainted kernel" warning into `dmesg` as soon as you load the module. More importantly, the kernel physically blocks non-GPL modules from calling certain restricted internal APIs (functions marked with `EXPORT_SYMBOL_GPL`). Tagging the module as GPL keeps the kernel happy and ensures we have full access to everything we need.
 
+**No Standard C Library (libc)**
+If you're used to standard C programming, you might notice the total absence of familiar includes like `<stdio.h>` or `<stdlib.h>`. 
+
+Because the kernel operates in an isolated environment (kernel space), it cannot link to standard user-space libraries like `glibc` since those user-space libraries literally rely on the kernel to function. The kernel has to be 100% self-sufficient. 
+
+Because it has zero access to external libraries, all header files must be pulled directly from the Linux kernel's own source tree (which is why they are prefixed with `linux/`, like `<linux/fs.h>`). The kernel developers had to write their own internal versions of standard tools from scratch. For example:
+
+* **Memory:** Instead of `<stdlib.h>` for `malloc()`, we use `<linux/slab.h>` for `kmalloc()`.
+* **Printing:** Instead of `<stdio.h>` for `printf()`, we use `<linux/kernel.h>` for `printk()`.
+* **Strings:** Instead of the standard `<string.h>`, we use the kernel's internal `<linux/string.h>` to access secure string functions like `strsep()` and `snprintf()`.
+
 ## Aufgabe 1: Module Basics
 
 The first step was just getting a basic module to compile, load, and unload safely. I wrote a simple C file using the `module_init` and `module_exit` macros. It uses `printk` to drop a status message into the kernel log (`dmesg`) whenever the module is inserted or removed.
