@@ -46,6 +46,8 @@ Here is exactly what this command is doing under the hood:
 * **`M=$(PWD)`**: Once `make` has read the kernel's rules, this argument tells it to jump right back to your current working directory (where your module's source code and local Makefile live).
 * **`modules`**: This is the specific build target. It tells the kernel build system to look at your `obj-m` assignment and compile your code into a loadable `.ko` file.
 
+**The /proc Filesystem (procfs)**
+The `/proc` directory is a virtual filesystem created entirely in RAM by the Linux kernel; none of the files inside it actually exist on your hard drive. Instead, reading a file (like `/proc/cpuinfo` or `/proc/modules`) triggers a kernel function that dynamically generates text detailing the system's current internal state. While device files in `/dev` (like `/dev/fritz_module`) are used for active input/output operations with hardware or drivers, `/proc` is strictly used for exposing system information and tuning kernel configurations on the fly. In fact, standard user-space commands rely heavily on this illusion—for example, the `lsmod` command simply reads the virtual `/proc/modules` file to list what is currently loaded in memory.
 
 ## Aufgabe 1: Module Basics
 
