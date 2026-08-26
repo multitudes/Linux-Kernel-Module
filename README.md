@@ -55,13 +55,13 @@ When building a Linux kernel module that users can interact with, the kernel nee
 
 If you reference older documentation like *Linux Device Drivers (LDD3)*, you will see device registration handled very differently than in this project. 
 
-### The "Hard Way" (Raw Character Drivers)
 Writing a raw character driver from scratch requires significant manual setup and user-space scripting:
 * You must ask the kernel for a new, dynamically allocated Major number using `alloc_chrdev_region()`.
 * The kernel does *not* automatically create the endpoint in your `/dev` directory when the module loads. 
 * To actually use the driver, you have to write a custom Bash script that loads the `.ko` file, searches through the virtual `/proc/devices` file to find out which Major number the kernel randomly handed you, and then uses the `mknod` command to physically create the `/dev/your_device` file so users can interact with it.
 
-### The "Misc Way" (The `miscdevice` Shortcut)
+### The `miscdevice`
+
 To save developers from writing setup scripts for simple devices, the kernel provides the `miscdevice` framework, which this project uses. 
 * Instead of requesting a unique Major number, our driver piggybacks on the kernel's built-in "misc" subsystem, which statically owns Major number 10.
 * By setting `.minor = MISC_DYNAMIC_MINOR` in our setup struct, the kernel safely auto-assigns us an available Minor number without risking conflicts.
