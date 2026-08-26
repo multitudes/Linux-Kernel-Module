@@ -117,13 +117,25 @@ dmesg -w
 
 ```
 
-**4. Test Memory Safeguards with `strace**`
-Verify the 1024-byte payload limit. We can use `strace` combined with `dd` to attempt a 2048-byte write. The output will explicitly show the kernel rejecting the system call with our `-EINVAL` error:
+**4. Test Memory Safeguards with `strace`
 
-```bash
-sudo strace dd if=/dev/zero of=/dev/fritz_module bs=2048 count=1
+To test the module's 1024-byte write limit, we can use a chained terminal command: 
+`sudo head -c 2048 /dev/zero | sudo strace tee /dev/fritz_module > /dev/null`
 
-```
+Here is what each part of the command does:
+
+*   **`sudo head -c 2048 /dev/zero`**: This generates 2,048 bytes of raw zeroes (null characters). We use `/dev/zero` because we just need bulk data, not actual text, to test the payload size.
+*   **`sudo strace`**: This attaches the `strace` diagnostic tool with root privileges to monitor all system calls made by the program immediately following it.
+*   **`tee /dev/fritz_module`**: This is the program actually interacting with our driver. Unlike tools like `dd` (which attempt to seek or truncate before writing, causing character devices to crash), `tee` simply opens the device file and attempts to write the piped data directly into it.
+*   **`> /dev/null`**: `tee` normally mirrors its input to the terminal screen. We redirect this output to the system's black hole (`/dev/null`) to keep our terminal clean, allowing us to easily read the `strace` diagnostic logs.
+
+Because `tee` attempts to write all 2,048 bytes in a single `write()` system call, our kernel module successfully intercepts it, enforces the 1024-byte limit, and rejects the payload. `strace` captures this interaction, displaying: 
+`write(3, "\0\0...", 2048) = -1 EINVAL (Invalid argument)`
+
+To test a successful write of 1024 chars:  
+`sudo head -c 1024 /dev/zero | tr '\0' '1' | sudo strace tee /dev/fritz_module > /dev/null`
+
+We use `tr '\0' '1'` because otherwise it would not be registered as a string and discarded.
 
 **5. Clean Up**
 Finally, unload the module to trigger the `my_exit` cleanup logic (which safely halts the background timer and destroys the linked list), then clean the build directory:
@@ -143,18 +155,20 @@ The first step was just getting a basic module to compile, load, and unload safe
 
 Next, I needed a way for regular terminal commands to talk to the kernel module.
 
-* I registered a character device that shows up at `/dev/fritz_module`.
-* When I `echo` text into it, the module uses `kmalloc` to allocate dynamic memory and stores the input safely using `copy_from_user`.
-* When I `cat` the device, it reads that dynamic memory and sends it back to the terminal using `copy_to_user`.
+* **Device Registration:** I registered a character device that automatically shows up at `/dev/fritz_module` using the `miscdevice` framework.
+* **Writing Data (Dynamic Linked List):** When I `echo` text into the device, the module safely reads it using `copy_from_user`. To fulfill the dynamic memory requirement, the driver tokenizes the input string into individual words and uses `kmalloc` to dynamically allocate a new node for each word. These nodes are then appended to a globally shared kernel linked list (`<linux/list.h>`).
+* **Reading Data:** When I `cat` the device, the module iterates through this linked list, reads the dynamically allocated memory, and safely sends the words back to the terminal using `copy_to_user`.
+* **Concurrency:** Because the linked list is globally shared, all read and write operations are safely wrapped in a mutex lock (`word_mutex`) to prevent memory corruption if multiple users access the device simultaneously.
 
-## Aufgabe 3: Lists, Timers, and Locks
+## Aufgabe 3: Timers, Workqueues, and Concurrency
 
-This part required a pretty big refactor. Instead of just holding a single string in memory, I needed to print the stored text to the kernel log word by word, exactly one second apart.
+The goal was to continuously consume the stored text and print it to the kernel log word by word, exactly one second apart.
 
-* **Linked List:** I split the incoming text into individual words and stored them as nodes in a standard kernel linked list (`struct list_head`).
-* **Workqueue Timer:** I set up a `delayed_work` task using the kernel's `HZ` macro. It wakes up once a second, pops the first word off the list, prints it, frees the memory, and schedules itself to run again.
-* **Mutex Lock:** Because the background timer is reading and deleting from the list at the exact same time a user might be echoing new words into it, I wrapped the list operations in a Mutex lock so the kernel doesn't crash from concurrent access.
+* **Workqueue Timer:** I implemented a `delayed_work` task utilizing the kernel's `HZ` macro to manage timing. Once triggered by a user write, this background worker wakes up every second, pops the oldest word off the front of the list, prints it to `dmesg`, safely frees the node's memory via `kfree()`, and reschedules itself until the queue is empty.
+* **Concurrency & Mutex Locks:** Introducing a background thread creates a critical race condition: the timer might attempt to read or delete a node at the exact millisecond a user is echoing new words into the device. To prevent memory corruption and kernel panics, all interactions with the shared list (both in user-space I/O and the background worker) are strictly protected by a kernel Mutex lock (`word_mutex`).
+* **Safe Teardown:** To guarantee memory safety when the module is removed, the exit sequence uses `cancel_delayed_work_sync()` to gracefully halt the background timer. It then utilizes a `list_for_each_entry_safe` loop to destroy any remaining unprinted words before the kernel reclaims the module's memory.
 
 ## Links
+
 [Ubuntu server download.](https://ubuntu.com/download/server/arm)  
 [kernel.org](https://kernel.org)  
