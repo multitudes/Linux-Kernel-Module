@@ -147,6 +147,10 @@ make clean
 
 ```
 
+## extra - Makefile Debugging Options
+
+To assist with development, the `Makefile` includes a built-in debugging toggle (`DEBUG = y`). When this is enabled, the Kbuild system passes the `-DDEBUG` flag to the compiler, which dynamically activates all `pr_debug()` statements within the module's C code. For the final submission build, commenting out this single line completely strips the debug messages from the compiled `.ko` binary, keeping the module lightweight and optimized.
+
 ## Aufgabe 1: Module Basics
 
 The first step was just getting a basic module to compile, load, and unload safely. I wrote a simple C file using the `module_init` and `module_exit` macros. It uses `printk` to drop a status message into the kernel log (`dmesg`) whenever the module is inserted or removed.
