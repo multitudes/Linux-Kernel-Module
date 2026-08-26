@@ -41,7 +41,8 @@ To actually trigger the build, the command is a bit more complex than a standard
 
 `make -C /lib/modules/$(uname -r)/build M=$(PWD) modules`
 
-Here is exactly what this command is doing under the hood:
+Here is what this command is doing under the hood:
+
 * **`-C <path>`**: This tells `make` to temporarily change its directory to the Linux kernel headers (or kernel source tree). This is necessary because it needs to read the kernel's massive top-level makefile to know *how* to build a module.
 * **`M=$(PWD)`**: Once `make` has read the kernel's rules, this argument tells it to jump right back to your current working directory (where your module's source code and local Makefile live).
 * **`modules`**: This is the specific build target. It tells the kernel build system to look at your `obj-m` assignment and compile your code into a loadable `.ko` file.
@@ -56,13 +57,15 @@ When building a Linux kernel module that users can interact with, the kernel nee
 If you reference older documentation like *Linux Device Drivers (LDD3)*, you will see device registration handled very differently than in this project. 
 
 Writing a raw character driver from scratch requires significant manual setup and user-space scripting:
+
 * You must ask the kernel for a new, dynamically allocated Major number using `alloc_chrdev_region()`.
 * The kernel does *not* automatically create the endpoint in your `/dev` directory when the module loads. 
 * To actually use the driver, you have to write a custom Bash script that loads the `.ko` file, searches through the virtual `/proc/devices` file to find out which Major number the kernel randomly handed you, and then uses the `mknod` command to physically create the `/dev/your_device` file so users can interact with it.
 
 ### The `miscdevice`
 
-To save developers from writing setup scripts for simple devices, the kernel provides the `miscdevice` framework, which this project uses. 
+To save developers from writing setup scripts for simple devices, the kernel provides the `miscdevice` framework, which this project uses.
+
 * Instead of requesting a unique Major number, our driver piggybacks on the kernel's built-in "misc" subsystem, which statically owns Major number 10.
 * By setting `.minor = MISC_DYNAMIC_MINOR` in our setup struct, the kernel safely auto-assigns us an available Minor number without risking conflicts.
 * The biggest advantage is that `misc_register()` automatically signals the OS device manager. The exact millisecond the module loads, the `/dev/fritz_module` file is automatically generated for us, and it seamlessly deletes itself when the module is removed. No manual scripts required.
@@ -72,6 +75,7 @@ To save developers from writing setup scripts for simple devices, the kernel pro
 If you are reading older kernel documentation (like the LDD3 book), you will frequently see semaphores and functions like `down_interruptible()` used to manage driver concurrency. While semaphores used to be the standard tool for this job, they are now considered outdated for basic locking scenarios. Modern Linux kernel development strongly prefers the **mutex** (Mutual Exclusion) API. Mutexes are specifically designed for "one-key" binary locking; they are leaner, execute faster, and include strict built-in debugging checks that semaphores lack. In this module, we use a mutex to protect our shared linked list from race conditions. Furthermore, by using `mutex_lock_interruptible()` in our read and write operations, we ensure that if a user process is waiting for the lock, it can still be safely canceled (e.g., via `Ctrl+C`), returning `-ERESTARTSYS` to gracefully back out of the system call.
 
 ## Handling Concurrency and Interleaved I/O
+
 While it might seem tempting to over-engineer the driver by isolating user inputs (e.g., mapping user IDs to individual linked lists via hash tables), this module purposefully implements a single, globally shared queue. This design choice strictly follows the philosophy of standard Linux character devices. Because character devices act as raw data streams rather than structured files, the kernel relies on user-space applications to coordinate their own synchronization. If multiple users write to shared endpoints like `/dev/kmsg` or `/dev/null` simultaneously, any resulting data interleaving is inherently considered the users' fault, not the driver's! 
 
 Because of this stream-based architecture, this module enforces a strict 1024-byte limit per `write` system call, rejecting excessively large payloads with `-EINVAL`. This provides a defensive safeguard for kernel memory without introducing the severe complexities of trying to schedule a single background timer across multiple, dynamically changing user queues.
@@ -84,6 +88,7 @@ To test the `fritz_module`, you will first need to SSH into the Linux virtual ma
 
 **1. Connect and Compile**
 First, SSH into your VM and navigate to the project directory. Build the kernel module using the provided dual-pass Makefile:
+
 ```bash
 ssh user@your-vm-ip
 // git clone the repo if not already done
@@ -130,10 +135,10 @@ To test the module's 1024-byte write limit, we can use a chained terminal comman
 
 Here is what each part of the command does:
 
-*   **`sudo head -c 2048 /dev/zero`**: This generates 2,048 bytes of raw zeroes (null characters). We use `/dev/zero` because we just need bulk data, not actual text, to test the payload size.
-*   **`sudo strace`**: This attaches the `strace` diagnostic tool with root privileges to monitor all system calls made by the program immediately following it.
-*   **`tee /dev/fritz_module`**: This is the program actually interacting with our driver. Unlike tools like `dd` (which attempt to seek or truncate before writing, causing character devices to crash), `tee` simply opens the device file and attempts to write the piped data directly into it.
-*   **`> /dev/null`**: `tee` normally mirrors its input to the terminal screen. We redirect this output to the system's black hole (`/dev/null`) to keep our terminal clean, allowing us to easily read the `strace` diagnostic logs.
+* `sudo head -c 2048 /dev/zero`: This generates 2,048 bytes of raw zeroes (null characters). We use `/dev/zero` because we just need bulk data, not actual text, to test the payload size.
+* `sudo strace`: This attaches the `strace` diagnostic tool with root privileges to monitor all system calls made by the program immediately following it.
+* `tee /dev/fritz_module`: This is the program actually interacting with our driver. Unlike tools like `dd` (which attempt to seek or truncate before writing, causing character devices to crash), `tee` simply opens the device file and attempts to write the piped data directly into it.
+* `> /dev/null`: `tee` normally mirrors its input to the terminal screen. We redirect this output to the system's black hole (`/dev/null`) to keep our terminal clean, allowing us to easily read the `strace` diagnostic logs.
 
 Because `tee` attempts to write all 2,048 bytes in a single `write()` system call, our kernel module successfully intercepts it, enforces the 1024-byte limit, and rejects the payload. `strace` captures this interaction, displaying: 
 `write(3, "\0\0...", 2048) = -1 EINVAL (Invalid argument)`
@@ -177,6 +182,12 @@ The goal was to continuously consume the stored text and print it to the kernel 
 * **Workqueue Timer:** I implemented a `delayed_work` task utilizing the kernel's `HZ` macro to manage timing. Once triggered by a user write, this background worker wakes up every second, pops the oldest word off the front of the list, prints it to `dmesg`, safely frees the node's memory via `kfree()`, and reschedules itself until the queue is empty.
 * **Concurrency & Mutex Locks:** Introducing a background thread creates a critical race condition: the timer might attempt to read or delete a node at the exact millisecond a user is echoing new words into the device. To prevent memory corruption and kernel panics, all interactions with the shared list (both in user-space I/O and the background worker) are strictly protected by a kernel Mutex lock (`word_mutex`).
 * **Safe Teardown:** To guarantee memory safety when the module is removed, the exit sequence uses `cancel_delayed_work_sync()` to gracefully halt the background timer. It then utilizes a `list_for_each_entry_safe` loop to destroy any remaining unprinted words before the kernel reclaims the module's memory.
+
+### Note on Kernel Logging: dmesg vs. /proc/kmsg
+
+While debugging the background worker thread, it is important to distinguish between the two primary interfaces for the kernel ring buffer: `/proc/kmsg` and the `dmesg` utility. As noted in classic kernel literature, reading directly from `/proc/kmsg` actually *consumes* the log data. This endpoint is specifically designed as a one-way data pipe for system logging daemons (like `rsyslogd` or `journald`). When a daemon reads a message to write it to `/var/log/syslog`, the kernel removes it from the buffer to prevent duplicate logging. Therefore, manually running `cat /proc/kmsg` will actively steal log lines from the system logger.
+
+Conversely, testing for this module relies entirely on `dmesg` (and modern equivalents utilizing `/dev/kmsg`). Rather than consuming the stream, `dmesg` requests a read-only snapshot of the ring buffer's current state, allowing developers to repeatedly view output without destroying the data. To monitor the background worker thread in real-time while viewing hidden log levels, the command `dmesg -xw` is used. If a clean testing state is required between runs, `sudo dmesg -c` can be explicitly called to print and flush the buffer.
 
 ## Links
 
