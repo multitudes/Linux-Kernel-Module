@@ -134,7 +134,7 @@ static struct miscdevice my_misc_device = {
     .minor = MISC_DYNAMIC_MINOR, .name = "fritz_module", .fops = &fops};
 
 // // Aufgabe 1:
-static int __init fritz_init(void) {
+static int __init my_init(void) {
     int err;
 
     mutex_init(&word_mutex);
@@ -148,7 +148,7 @@ static int __init fritz_init(void) {
         return err; // Propagate the error directly
     }
 
-    printk(KERN_INFO "fritz_module: loaded successfully\n");
+    printk(KERN_INFO "fritz_module: Hello World!\n");
     return 0;
 }
 
