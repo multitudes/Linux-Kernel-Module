@@ -1,6 +1,6 @@
 // just about all module code has the following:
+#include <linux/init.h>
 #include <linux/module.h>
-#include <linux/init.h> 
 
 // and the rest
 #include <linux/fs.h>
@@ -97,7 +97,10 @@ static ssize_t dev_write(struct file *filep, const char __user *buffer,
   char *input_buf, *str_ptr, *token;
 
   if (len > 1024)
-    return -EINVAL;
+    // This will only print if DEBUG = y in your Makefile
+    pr_debug("fritz_module: Rejected payload of size %zu (exceeds 1024)\n",
+             len);
+  return -EINVAL;
 
   input_buf = kzalloc(len + 1, GFP_KERNEL);
   if (!input_buf)
@@ -115,7 +118,9 @@ static ssize_t dev_write(struct file *filep, const char __user *buffer,
     struct word_node *new_node = kmalloc(sizeof(struct word_node), GFP_KERNEL);
     if (new_node) {
       new_node->word = kstrdup(token, GFP_KERNEL);
-
+      // Print the exact word we are adding to the linked list
+      pr_debug("fritz_module: Dynamically allocated node for word: '%s'\n",
+               token);
       mutex_lock(&word_mutex);
       list_add_tail(&new_node->list, &word_list);
       mutex_unlock(&word_mutex);
@@ -133,23 +138,23 @@ static struct file_operations fops = {
 static struct miscdevice my_misc_device = {
     .minor = MISC_DYNAMIC_MINOR, .name = "fritz_module", .fops = &fops};
 
-// // Aufgabe 1:
+// Aufgabe 1:
 static int __init my_init(void) {
-    int err;
+  int err;
 
-    mutex_init(&word_mutex);
-    INIT_LIST_HEAD(&word_list);
-    INIT_DELAYED_WORK(&print_work, print_word_work);
+  mutex_init(&word_mutex);
+  INIT_LIST_HEAD(&word_list);
+  INIT_DELAYED_WORK(&print_work, print_word_work);
 
-    // misc_register returns 0 on success, or a negative error code
-    err = misc_register(&my_misc_device);
-    if (err) {
-        printk(KERN_ERR "fritz_module: failed to register device\n");
-        return err; // Propagate the error directly
-    }
+  // misc_register returns 0 on success, or a negative error code
+  err = misc_register(&my_misc_device);
+  if (err) {
+    printk(KERN_ERR "fritz_module: failed to register device\n");
+    return err; // Propagate the error directly
+  }
 
-    printk(KERN_INFO "fritz_module: Hello World!\n");
-    return 0;
+  printk(KERN_INFO "fritz_module: Hello World!\n");
+  return 0;
 }
 
 static void __exit my_exit(void) {
@@ -171,6 +176,7 @@ static void __exit my_exit(void) {
 
 // The use of module_initis mandatory
 module_init(my_init);
-//  If your module does not define a cleanup function, the kernel does not allow it to be
+//  If your module does not define a cleanup function, the kernel does not allow
+//  it to be
 // unloaded.
 module_exit(my_exit);
