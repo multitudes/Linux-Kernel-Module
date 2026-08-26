@@ -96,11 +96,12 @@ static ssize_t dev_write(struct file *filep, const char __user *buffer,
                          size_t len, loff_t *offset) {
   char *input_buf, *str_ptr, *token;
 
-  if (len > 1024)
+  if (len > 1024) {
     // This will only print if DEBUG = y in your Makefile
     pr_debug("fritz_module: Rejected payload of size %zu (exceeds 1024)\n",
              len);
-  return -EINVAL;
+    return -EINVAL;
+  }
 
   input_buf = kzalloc(len + 1, GFP_KERNEL);
   if (!input_buf)
