@@ -102,6 +102,12 @@ dmesg | tail -n 5
 
 ```
 
+Or in another terminal window (it will show the log level too with -x):
+
+```bash
+dmesg -xw
+```
+
 **3. Test the Word Queue**
 Write a string to the device. *Note: Because standard shell redirection (`>`) evaluates permissions before `sudo` executes, we use `tee` to safely elevate permissions for the write operation.*
 
